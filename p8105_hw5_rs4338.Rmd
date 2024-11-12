@@ -1,0 +1,90 @@
+---
+title: "p8105_hw5_rs4338"
+author: "Rebecca Shyu"
+date: "2024-11-12"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+set.seed(1)
+
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+
+library(tidyverse)
+library(broom)
+
+```
+
+
+```{r}
+birthday = function(n) {
+  if (!is.numeric(n)) {
+    stop("Input (group size) needs to be numeric")
+  }
+  
+  bday_vec = sort(round(runif(n, min = 1, max = 365)))
+  
+  duplicates = sum(duplicated(bday_vec)) > 0
+
+  return(duplicates)
+}
+```
+
+```{r}
+bday_sim =
+  expand_grid(
+    n = 2:50,
+    iter = 1:10000
+  ) %>% 
+  mutate(
+    results = map_lgl(n, birthday)
+  ) %>% 
+  group_by(n) %>% 
+  summarize(prob = mean(results))
+
+bday_sim %>% 
+  ggplot(aes(x = n, y = prob )) + 
+  geom_line()
+
+```
+
+
+```{r prob2}
+
+n = 30
+alpha = 5
+
+prob2_sim =
+  expand_grid(
+    mu = 0:6,
+    iter = 1:5000
+  ) %>% 
+  mutate(
+    dataset = map(mu, ~rnorm(n = n, mean = .x, sd = alpha)),
+    t_tests = map(dataset, ~t.test(.x)),
+    p_val = map(t_tests, ~tidy(.x) %>% pull(p.value)),
+    estimate_val = map_dbl(t_tests, ~tidy(.x) %>% pull(estimate))
+  ) %>% 
+  select(
+    -t_tests
+  )
+```
+
