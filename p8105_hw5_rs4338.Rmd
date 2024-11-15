@@ -34,6 +34,19 @@ scale_fill_discrete = scale_fill_viridis_d
 
 ```
 
+## Problem 0:
+
+* Create a public GitHub repo + local R Project: p8105_h53_rs4338
+* Create a single .Rmd file named p8105_hw5_rs4338.Rmd that renders to github_document
+* Create a subdirectory (data) to store the local data files, and use relative paths to access these data files
+* Submit a link to your repo via Courseworks: https://github.com/rysgpd/p8105_hw5_rs4338
+
+
+## Problem 1:
+
+* Write a function that, for a fixed group size, randomly draws “birthdays” for each person; checks whether there are duplicate birthdays in the group; and returns TRUE or FALSE based on the result.
+* Run this function 10000 times for each group size between 2 and 50. For each group size, compute the probability that at least two people in the group will share a birthday by averaging across the 10000 simulation runs. 
+* Make a plot showing the probability as a function of group size, and comment on your results.
 
 ```{r prob1_function}
 birthday = function(n) {
@@ -75,7 +88,10 @@ bday_sim %>%
 
 ```
 
+## Problem 2:
 
+* Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of 𝜇on the x axis. Describe the association between effect size and power.
+* Make a plot showing the average estimate of 𝜇̂ on the y axis and the true value of 𝜇on the x axis. Make a second plot (or overlay on the first) the average estimate of 𝜇̂ only in samples for which the null was rejected on the y axis and the true value of 𝜇 on the x axis. Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?
 
 ```{r prob2_setup}
 prob2_sim = function(mu) {
@@ -157,4 +173,91 @@ ggplot() +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
+## Problem 3:
 
+* Describe the raw data. Create a city_state variable (e.g. “Baltimore, MD”) and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides (those for which the disposition is “Closed without arrest” or “Open/No arrest”).
+* For the city of Baltimore, MD, use the prop.test function to estimate the proportion of homicides that are unsolved; save the output of prop.test as an R object, apply the broom::tidy to this object and pull the estimated proportion and confidence intervals from the resulting tidy dataframe.
+* Now run prop.test for each of the cities in your dataset, and extract both the proportion of unsolved homicides and the confidence interval for each. Do this within a “tidy” pipeline, making use of purrr::map, purrr::map2, list columns and unnest as necessary to create a tidy dataframe with estimated proportions and CIs for each city.
+* Create a plot that shows the estimates and CIs for each city – check out geom_errorbar for a way to add error bars based on the upper and lower limits. Organize cities according to the proportion of unsolved homicides.
+
+
+```{r prob3_setup}
+
+homicide_df = read_csv("data/homicide-data.csv", na = c("", "Unknown"),
+                       col_types = cols(
+                         reported_date = col_date(format = "%Y%m%d"),
+                         victim_sex = col_factor(levels = c("Female", "Male")),
+                         victim_race = col_factor(),
+                         disposition = col_factor()
+                       )) %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    city_state = paste(city, state, sep = ", ")
+  )
+
+homicide_prop_df = 
+  homicide_df %>% 
+  group_by(city_state) %>% 
+  summarise(total_homicides = n()) %>% 
+  merge(
+    homicide_df %>% 
+      filter(
+        disposition != "Closed by arrest"
+      ) %>% 
+      group_by(city_state) %>% 
+      summarise(unsolved_homicides = n())
+  )
+```
+
+The Homicide Dataset begins with `r homicide_df %>% nrow()` rows/cases. It has `r homicide_df %>% ncol()` columns, including date, name, demographics (age, race), location (longitude/latitude, city, state), and disposition result. homicide_prop_df is the dataset that summarizes within cities and contains information about 1) total number of homicides and 2) number of unsolved homicides (anything but closed by arrest).
+
+```{r prob3_results, fig.width=10}
+baltimore_df = 
+  homicide_prop_df %>% 
+  filter(
+    city_state == "Baltimore, MD"
+  )
+
+
+balt_results = prop.test(x = pull(baltimore_df, unsolved_homicides),
+                         n = pull(baltimore_df, total_homicides))
+
+final_balt = 
+  balt_results %>% broom::tidy() %>% 
+  select(estimate, conf.low, conf.high)
+
+
+prob3_function = function(unsolved_homicides, total_homicides) {
+  results = prop.test(x = unsolved_homicides,
+                      n = total_homicides)
+  
+  return(results %>% broom::tidy() %>% 
+           select(estimate, conf.low, conf.high))
+}
+
+homicide_result = 
+  homicide_prop_df %>% 
+  mutate(
+    prop_tests = map2(unsolved_homicides, total_homicides, prob3_function)
+  ) %>% 
+  unnest_wider(prop_tests)
+
+homicide_result %>% 
+  mutate(
+    city_state = reorder(city_state, estimate)
+  ) %>% 
+  ggplot(aes(y=city_state, x=estimate)) +
+  geom_point() +
+  geom_errorbar(aes(xmin=conf.low, xmax=conf.high))+
+  labs(
+    title = "Estimates of Proportion of Unsolved Homicides",
+    x = "Locations",
+    y = "Estimates"
+    ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+    )
+
+```
+
+Glad I don't live in Chicago. I'm surprised that NYC is along the lower end, but happy to see it. 
