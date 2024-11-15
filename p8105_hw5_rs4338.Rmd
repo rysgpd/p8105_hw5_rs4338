@@ -8,13 +8,16 @@ output: github_document
 ```{r setup, include=FALSE}
 set.seed(1)
 
+library(tidyverse)
+library(broom)
 
 knitr::opts_chunk$set(
 	echo = TRUE,
 	warning = FALSE,
   fig.width = 6,
   fig.asp = .6,
-  out.width = "90%"
+  out.width = "90%",
+	dpi=300
 )
 
 theme_set(theme_minimal() + theme(legend.position = "bottom"))
@@ -28,13 +31,11 @@ scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
 
 
-library(tidyverse)
-library(broom)
 
 ```
 
 
-```{r}
+```{r prob1_function}
 birthday = function(n) {
   if (!is.numeric(n)) {
     stop("Input (group size) needs to be numeric")
@@ -48,7 +49,9 @@ birthday = function(n) {
 }
 ```
 
-```{r}
+Based on the following plot looking at probability of at least two people in the group sharing a birthday as a function of group size, as the group size increases, the probability gets closer to 1. This makes sense because 0 to 50 is getting closer to the number of days in a year (365 in this case) and we're assuming that birthdays are uniformly distributed (not true in reality) so the probability increases as we draw more.
+
+```{r prob1_sim}
 bday_sim =
   expand_grid(
     n = 2:50,
@@ -62,29 +65,96 @@ bday_sim =
 
 bday_sim %>% 
   ggplot(aes(x = n, y = prob )) + 
-  geom_line()
+  geom_line() +
+  labs(
+    title = "Probability of >1 Shared Bday Across Group Size",
+    x = "Group Size (n)",
+    y = "Probability"
+    ) +
+  theme(plot.title = element_text(hjust = 0.5))
 
 ```
 
 
-```{r prob2}
 
-n = 30
-alpha = 5
+```{r prob2_setup}
+prob2_sim = function(mu) {
+  
+  n = 30
+  alpha = 5
 
-prob2_sim =
+  sim_data = 
+    tibble(
+      x = rnorm(n, mean = mu, sd = alpha)
+    )
+  
+  t_results = tidy(t.test(sim_data))
+  
+  out_df =
+    tibble(
+      p_val = t_results %>% pull(p.value),
+      estimate_val = t_results %>% pull(estimate)
+    )
+  
+  return(out_df)
+}
+
+
+prob2_results =
   expand_grid(
     mu = 0:6,
     iter = 1:5000
   ) %>% 
   mutate(
-    dataset = map(mu, ~rnorm(n = n, mean = .x, sd = alpha)),
-    t_tests = map(dataset, ~t.test(.x)),
-    p_val = map(t_tests, ~tidy(.x) %>% pull(p.value)),
-    estimate_val = map_dbl(t_tests, ~tidy(.x) %>% pull(estimate))
+    t_tests = map(mu, prob2_sim)
   ) %>% 
-  select(
-    -t_tests
-  )
+  unnest(t_tests)
 ```
+
+Based on the following plot, as mu (effect size) increased from 0 to 6, the power (proportion of iterations rejecting the null - p-value less than 0.05) also increased. The larger the effect size, the easier/larger likelihood for the t-test to reject the null hypothesis.
+
+```{r prob2_effvspower}
+prob2_results %>% 
+  group_by(mu) %>% 
+  summarise(proportion_reject = mean(p_val < 0.05)) %>% 
+  ggplot(aes(x = mu, y = proportion_reject)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Effect Size vs Power",
+    x = "Mu",
+    y = "Proportion of Rejecting Null"
+    ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+This plot shows the average estimates of mu for all samples (black) and only sames for which the null was rejected (red) vs the true value of mu (0-6). I've overlayed both onto one plot for easy comparison. The black dots are very close to the like y=x, but the red varies a lot until mu = 4 when it matches up with the black dots. This matches with the plot right above where at mu=4, the power is almost to 1 and is approximately equal to the true value of mu. Mu = 0 is interesting for the red dot because the averaged estimates also includes negative numbers which shows that it's closer to the actual value, but it has very low power in reality. 
+
+```{r prob2_avgvstruemu}
+avg_est_all = 
+  prob2_results %>% 
+  group_by(mu) %>% 
+  summarise(avg_mu_est = mean(estimate_val))
+
+avg_est_reject = 
+  prob2_results %>% 
+  filter(
+    p_val <= 0.05
+  ) %>% 
+  group_by(mu) %>% 
+  summarise(avg_mu_est = mean(estimate_val)) 
+
+ggplot() +
+  geom_point(data = avg_est_all, aes(x = mu, y = avg_mu_est, color = "All Estimates")) +
+  geom_point(data = avg_est_reject, aes(x = mu, y = avg_mu_est, color = "Only Rejected Estimates")) +
+  scale_color_manual(values = c("All Estimates" = "black", "Only Rejected Estimates" = "red")) +
+  labs(
+    title = "Average Estimates vs True Mus",
+    x = "True Mu",
+    y = "Average Mu Estimate",
+    color = "Estimate Type"
+    ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 
